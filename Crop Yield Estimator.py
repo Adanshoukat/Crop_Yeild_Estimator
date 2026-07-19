@@ -5,179 +5,154 @@ import pandas as pd
 import os
 from sklearn.linear_model import LinearRegression
 
-# ---------------------------------------------------------
-# STEP 1: ML MODEL SETUP & DATASET
-# ---------------------------------------------------------
-X_train = np.array([
-    [5, 25, 500], [10, 28, 600], [15, 30, 450],
-    [2, 22, 300], [20, 32, 700], [8, 26, 550], [12, 29, 400]
-])
-y_train = np.array([12, 25, 32, 5, 50, 18, 24])
+# 1. Dummy Data Generation & Model Training for Backend Simulation
+np.random.seed(42)
+X_dummy = np.random.rand(100, 3)  # Features: Farm Size, Temp, Rainfall
+# Scale features to realistic ranges:
+X_dummy[:, 0] = X_dummy[:, 0] * 50 + 1     # Farm Size: 1 to 51 Acres
+X_dummy[:, 1] = X_dummy[:, 1] * 30 + 10    # Temp: 10°C to 40°C
+X_dummy[:, 2] = X_dummy[:, 2] * 1500 + 200 # Rainfall: 200mm to 1700mm
+
+# Dynamic baseline yield estimation formula for training data
+y_dummy = (X_dummy[:, 0] * 2.5) + (X_dummy[:, 1] * 0.4) + (X_dummy[:, 2] * 0.01)
 
 model = LinearRegression()
-model.fit(X_train, y_train)
+model.fit(X_dummy, y_dummy)
 
-CSV_FILE = "crop_yield_history.csv"
+# CSV Database Setup
+csv_filename = "crop_yield_history.csv"
 
-# ---------------------------------------------------------
-# STEP 2: LOGIC & EVENT HANDLING WITH FLOOD CONTROLS
-# ---------------------------------------------------------
-def save_to_csv(size, temp, rain, yield_pred, advisory_msg):
-    """Appends simulation outputs and metrics safely into a CSV dataset."""
-    new_data = {
-        "Farm Size (Acres)": [size],
-        "Avg Temperature (°C)": [temp],
-        "Annual Rainfall (mm)": [rain],
-        "Estimated Yield (Tons)": [round(yield_pred, 2)],
-        "System Advisory": [advisory_msg]
-    }
-    df_new = pd.DataFrame(new_data)
-    if os.path.exists(CSV_FILE):
-        df_existing = pd.read_csv(CSV_FILE)
-        df_combined = pd.concat([df_existing, df_new], ignore_index=True)
-        df_combined.to_csv(CSV_FILE, index=False)
-    else:
-        df_new.to_csv(CSV_FILE, index=False)
-
-def focus_next(event, next_widget):
-    """Transfers widget keyboard focus sequentially on Return/Enter key."""
-    next_widget.focus()
-    return "break"
-
-def predict_yield(event=None):
-    """Processes environmental vectors, handles ML inference, and overrides flood bounds."""
+# 2. Prediction Engine with Hybrid Agronomic Constraints
+def predict_yield_handler(event=None):
     try:
-        size = float(entry_size.get())
-        temp = float(entry_temp.get())
-        rain = float(entry_rain.get())
+        # Retrieve and parse inputs
+        farm_size = float(entry_farm.get())
+        temperature = float(entry_temp.get())
+        rainfall = float(entry_rain.get())
         
-        if size <= 0 or temp <= 0 or rain <= 0:
-            messagebox.showerror("Input Error", "Please enter positive values greater than zero.")
+        if farm_size <= 0 or temperature <= -50 or rainfall < 0:
+            messagebox.showerror("Input Error", "Please enter valid realistic environmental attributes.")
             return
 
-        input_data = np.array([[size, temp, rain]])
-        prediction = model.predict(input_data)[0]
+        # Core Machine Learning Inference
+        input_data = np.array([[farm_size, temperature, rainfall]])
+        predicted_yield = model.predict(input_data)[0]
         
-        if prediction < 0: 
-            prediction = 0
-            
-        if rain < 400:
-            advisory = "Warning: Low rainfall detected! Ensure timely artificial irrigation."
-            output_container.config(highlightbackground="#ef4444", highlightthickness=3)
-            label_result.config(fg="#dc2626")
-        elif rain > 1500:
+        # Default Optimal UI Colors
+        bg_color = "#e8f5e9"  # Light Green
+        
+        # Apply Rule-Based Expert Constraints (Hybrid Intelligence Layer)
+        if rainfall > 1500.0:
+            predicted_yield = predicted_yield * 0.2  # 80% drop due to severe waterlogging
             advisory = "CRITICAL ALERT: Flood risk / Excessive rainfall! Yield will drop drastically due to waterlogging."
-            output_container.config(highlightbackground="#7c3aed", highlightthickness=3) 
-            label_result.config(fg="#7c3aed")
-            prediction = prediction * 0.2  
-        elif temp > 32:
-            advisory = "Alert: High temperature detected! Apply mulching to retain soil moisture."
-            output_container.config(highlightbackground="#f59e0b", highlightthickness=3)
-            label_result.config(fg="#d97706")
+            bg_color = "#ffdddd"  # Light Red
+            
+        elif temperature < 12.0:
+            predicted_yield = predicted_yield * 0.4  # 60% drop due to severe frost/cold stress
+            advisory = "CRITICAL ALERT: Extreme Cold / Frost Risk! Low temperature will stunt crop development."
+            bg_color = "#e3f2fd"  # Light Ice-Blue
+            
+        elif rainfall < 500.0:
+            advisory = "Warning: Low rainfall detected! Ensure timely artificial irrigation."
+            bg_color = "#fff3cd"  # Light Yellow
+            
+        elif temperature > 32.0:
+            advisory = "Warning: High temperature detected! Implement soil mulching to retain moisture."
+            bg_color = "#fff3cd"  # Light Yellow
+            
         else:
             advisory = "Optimal Weather Conditions! Standard fertilizer cycles recommended."
-            output_container.config(highlightbackground="#10b981", highlightthickness=3)
-            label_result.config(fg="#059669")
 
-        label_result.config(text=f"{prediction:.2f} Tons")
-        label_advisory.config(text=advisory, fg="#1e293b")
+        # Format output string
+        formatted_yield = f"{max(0.0, predicted_yield):.2f} Tons"
         
-        save_to_csv(size, temp, rain, prediction, advisory)
+        # Update Dashboard Interface Elements
+        lbl_yield_val.config(text=formatted_yield)
+        lbl_advisory_val.config(text=advisory)
+        frame_result.config(bg=bg_color)
+        lbl_yield_title.config(bg=bg_color)
+        lbl_yield_val.config(bg=bg_color)
+        lbl_advisory_title.config(bg=bg_color)
+        lbl_advisory_val.config(bg=bg_color)
         
+        # 3. Persistent Data Logging to CSV Database
+        new_record = {
+            "Farm Size (Acres)": farm_size,
+            "Avg Temperature (°C)": temperature,
+            "Annual Rainfall (mm)": rainfall,
+            "Estimated Yield (Tons)": round(max(0.0, predicted_yield), 2),
+            "System Advisory": advisory
+        }
+        
+        df = pd.DataFrame([new_record])
+        if not os.path.isfile(csv_filename):
+            df.to_csv(csv_filename, index=False)
+        else:
+            df.to_csv(csv_filename, mode='a', header=False, index=False)
+            
     except ValueError:
-        messagebox.showerror("Input Error", "Please enter valid numeric values.")
+        messagebox.showerror("Data Type Error", "Please ensure all fields contain numeric values.")
 
-def on_enter(e):
-    btn_predict.config(bg="#0f5132")
-
-def on_leave(e):
-    btn_predict.config(bg="#198754")
-
-# ---------------------------------------------------------
-# STEP 3: SCALE-UP MAXIMIZED UI DESIGN
-# ---------------------------------------------------------
+# 4. Enterprise Desktop Graphical User Interface Setup
 root = tk.Tk()
 root.title("Crop Yield Estimator Dashboard")
+root.state('zoomed')  # Launches application window directly into a maximized state
+root.configure(bg="#f4fbf7")
 
-# Force window to launch directly in maximized screen state
-root.state('zoomed')
-root.resizable(False, False)
-root.configure(bg="#f0fdf4") 
+# Global Fonts Configurations
+font_title = ("Helvetica", 28, "bold")
+font_section = ("Helvetica", 14, "bold")
+font_label = ("Helvetica", 12, "bold")
+font_entry = ("Helvetica", 12)
+font_display = ("Helvetica", 32, "bold")
+font_adv = ("Helvetica", 12, "bold")
 
-# Main responsive layout container (Takes up 65% width of the massive screen)
-main_layout = tk.Frame(root, bg="#f0fdf4")
-main_layout.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.65)
+# Title Banner
+lbl_main_title = tk.Label(root, text="Crop Yield Estimator", font=font_title, fg="#1e5631", bg="#f4fbf7")
+lbl_main_title.pack(pady=30)
 
-# Scaled up application title
-header = tk.Label(
-    main_layout, text="Crop Yield Estimator", 
-    font=("Arial Rounded MT Bold", 32), bg="#f0fdf4", fg="#14532d"
-)
-header.pack(pady=(0, 25))
+# Main Form Container Card
+frame_input = tk.LabelFrame(root, text="Environmental Parameters", font=font_section, fg="#1e5631", bg="white", padx=30, pady=30, bd=1, relief="solid")
+frame_input.pack(pady=10, ipady=10, ipadx=40)
 
-# 1. Environmental Parameters Input Card (Expanded size & padding)
-input_container = tk.Frame(main_layout, bg="#ffffff", highlightbackground="#bbf7d0", highlightthickness=2, padx=45, pady=35)
-input_container.pack(pady=15, fill="x")
+# Input Row Layout Matrix
+tk.Label(frame_input, text="Farm Size (Acres):", font=font_label, bg="white").grid(row=0, column=0, sticky="w", pady=15, padx=10)
+entry_farm = tk.Entry(frame_input, font=font_entry, width=25, bd=1, relief="solid")
+entry_farm.grid(row=0, column=1, pady=15, padx=10)
+entry_farm.focus()  # Puts cursor in first cell on start
 
-input_title = tk.Label(input_container, text="Environmental Parameters", font=("Segoe UI", 18, "bold"), bg="#ffffff", fg="#166534")
-input_title.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 25))
+tk.Label(frame_input, text="Avg Temperature (°C):", font=font_label, bg="white").grid(row=1, column=0, sticky="w", pady=15, padx=10)
+entry_temp = tk.Entry(frame_input, font=font_entry, width=25, bd=1, relief="solid")
+entry_temp.grid(row=1, column=1, pady=15, padx=10)
 
-label_opts = {"bg": "#ffffff", "font": ("Segoe UI", 14, "bold"), "fg": "#374151"}
-entry_opts = {
-    "font": ("Segoe UI", 14, "bold"), 
-    "bg": "#ffffff", 
-    "bd": 0, 
-    "highlightthickness": 1, 
-    "highlightbackground": "#9ca3af", 
-    "highlightcolor": "#166534", 
-    "width": 25, 
-    "fg": "#111827"
-}
+tk.Label(frame_input, text="Annual Rainfall (mm):", font=font_label, bg="white").grid(row=2, column=0, sticky="w", pady=15, padx=10)
+entry_rain = tk.Entry(frame_input, font=font_entry, width=25, bd=1, relief="solid")
+entry_rain.grid(row=2, column=1, pady=15, padx=10)
 
-tk.Label(input_container, text="Farm Size (Acres):", **label_opts).grid(row=1, column=0, sticky="w", pady=15)
-entry_size = tk.Entry(input_container, **entry_opts)
-entry_size.grid(row=1, column=1, pady=15, sticky="e")
-entry_size.focus()
-
-tk.Label(input_container, text="Avg Temperature (°C):", **label_opts).grid(row=2, column=0, sticky="w", pady=15)
-entry_temp = tk.Entry(input_container, **entry_opts)
-entry_temp.grid(row=2, column=1, pady=15, sticky="e")
-
-tk.Label(input_container, text="Annual Rainfall (mm):", **label_opts).grid(row=3, column=0, sticky="w", pady=15)
-entry_rain = tk.Entry(input_container, **entry_opts)
-entry_rain.grid(row=3, column=1, pady=15, sticky="e")
-
-input_container.grid_columnconfigure(1, weight=1)
-
-# Keyboard Event Navigation Configurations
-entry_size.bind("<Return>", lambda e: focus_next(e, entry_temp))
-entry_temp.bind("<Return>", lambda e: focus_next(e, entry_rain))
-entry_rain.bind("<Return>", predict_yield)
-
-# 2. Large Action Button to fit the widescreen dashboard structure
-btn_predict = tk.Button(
-    main_layout, text="PREDICT YIELD", font=("Segoe UI", 14, "bold"), 
-    bg="#198754", fg="white", activebackground="#0f5132", activeforeground="white",
-    bd=0, cursor="hand2", command=predict_yield, width=30, height=1, pady=12
-)
+# Action Trigger Button
+btn_predict = tk.Button(root, text="PREDICT YIELD", font=font_label, fg="white", bg="#13824b", activebackground="#0f663a", activeforeground="white", width=25, height=2, bd=0, cursor="hand2", command=predict_yield_handler)
 btn_predict.pack(pady=25)
-btn_predict.bind("<Enter>", on_enter)
-btn_predict.bind("<Leave>", on_leave)
 
-# 3. Dynamic Output Analytics Display Card (Sized perfectly for widescreen text wrap)
-output_container = tk.Frame(main_layout, bg="#ffffff", highlightbackground="#cbd5e1", highlightthickness=1, padx=45, pady=35)
-output_container.pack(pady=15, fill="x")
+# --- Dynamic Focus Traversal Bindings ---
+entry_farm.bind('<Return>', lambda event: entry_temp.focus())
+entry_temp.bind('<Return>', lambda event: entry_rain.focus())
+entry_rain.bind('<Return>', predict_yield_handler)
 
-tk.Label(output_container, text="ESTIMATED CROP YIELD", font=("Segoe UI Black", 12), bg="#ffffff", fg="#6b7280").pack()
-label_result = tk.Label(output_container, text="-- Tons", font=("Arial Rounded MT Bold", 36), bg="#ffffff", fg="#374151")
-label_result.pack(pady=(5, 20))
+# Result Output Dashboard Display Card
+frame_result = tk.Frame(root, bd=2, relief="solid", highlightthickness=0, highlightbackground="#13824b", bg="#e8f5e9")
+frame_result.pack(pady=20, fill="x", padx=200, ipady=20)
 
-tk.Label(output_container, text="SYSTEM ADVISORY", font=("Segoe UI Black", 12), bg="#ffffff", fg="#6b7280").pack()
-label_advisory = tk.Label(
-    output_container, text="Awaiting system parameters...", 
-    font=("Segoe UI Semibold", 14), bg="#ffffff", fg="#4b5563", 
-    wraplength=800, justify="center" # Expanded text wrap limit to prevent cutting off text on full-screen
-)
-label_advisory.pack(pady=(10, 0))
+lbl_yield_title = tk.Label(frame_result, text="ESTIMATED CROP YIELD", font=("Helvetica", 9, "bold"), fg="#555555", bg="#e8f5e9")
+lbl_yield_title.pack(pady=(10, 0))
 
+lbl_yield_val = tk.Label(frame_result, text="-- Tons", font=font_display, fg="#13824b", bg="#e8f5e9")
+lbl_yield_val.pack(pady=5)
+
+lbl_advisory_title = tk.Label(frame_result, text="SYSTEM ADVISORY", font=("Helvetica", 9, "bold"), fg="#555555", bg="#e8f5e9")
+lbl_advisory_title.pack(pady=(15, 0))
+
+lbl_advisory_val = tk.Label(frame_result, text="Awaiting target parameter inputs...", font=font_adv, fg="#222222", bg="#e8f5e9", wraplength=800, justify="center")
+lbl_advisory_val.pack(pady=(5, 10))
+
+# Execute Application Main Loop
 root.mainloop()
